@@ -385,3 +385,90 @@
     )
   )
 )
+
+;; ---- Read-only Functions ----
+
+;; Get event details by ID
+(define-read-only (get-event (event-id uint))
+  (map-get? events {event-id: event-id})
+)
+
+;; Check if an address is an approved organizer
+(define-read-only (is-organizer (who principal))
+  (default-to false (get is-approved (map-get? organizers {organizer: who})))
+)
+
+;; Get admin address
+(define-read-only (get-admin)
+  (var-get admin)
+)
+
+;; Get next event ID
+(define-read-only (get-next-event-id)
+  (var-get next-event-id)
+)
+
+;; Get next ticket ID
+(define-read-only (get-next-ticket-id)
+  (var-get next-ticket-id)
+)
+
+;; Get ticket info for a user and event
+(define-read-only (get-ticket (event-id uint) (owner principal))
+  (map-get? tickets {event-id: event-id, owner: owner})
+)
+
+;; ---- Read-only Functions for Ticket ID Lookup ----
+
+;; Get ticket owner by ticket ID
+(define-read-only (get-ticket-owner (ticket-id uint))
+  (map-get? ticket-owners {ticket-id: ticket-id})
+)
+
+;; Get ticket info by ticket ID (includes event details)
+(define-read-only (get-ticket-info (ticket-id uint))
+  (match (map-get? ticket-owners (tuple (ticket-id ticket-id)))
+    ticket-info
+    (let (
+          (event-id (get event-id ticket-info))
+         )
+      (match (map-get? events (tuple (event-id event-id)))
+        event-data
+        (some {
+          ticket-id: ticket-id,
+          owner: (get owner ticket-info),
+          event-id: event-id,
+          event-name: (get name event-data),
+          event-location: (get location event-data),
+          event-timestamp: (get timestamp event-data),
+          used: (get used ticket-info),
+          purchase-timestamp: (get purchase-timestamp ticket-info)
+        })
+        none
+      )
+    )
+    none
+  )
+)
+
+;; Check if a ticket ID is valid and not used
+(define-read-only (is-ticket-valid (ticket-id uint))
+  (match (map-get? ticket-owners (tuple (ticket-id ticket-id)))
+    ticket-info
+    (not (get used ticket-info))
+    false))
+
+;; Check if event is cancelled
+(define-read-only (is-event-cancelled (event-id uint))
+  (default-to false (map-get? event-cancelled {event-id: event-id}))
+)
+
+;; Get total events count
+(define-read-only (get-total-events)
+  (- (var-get next-event-id) u1)
+)
+
+;; Get organizer approval status
+(define-read-only (get-organizer-status (organizer principal))
+  (map-get? organizers {organizer: organizer})
+)
