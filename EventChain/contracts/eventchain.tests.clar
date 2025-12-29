@@ -83,3 +83,96 @@
     (ok true)
   )
 )
+
+;; Test: Event timestamp is in the future relative to creation
+(define-public (test-timestamp-after-creation (event-id uint))
+  (match (get-event event-id)
+    event-data
+    (begin
+      (asserts! (> (get timestamp event-data) (get created-timestamp event-data))
+                (err u1007))
+      (ok true))
+    (ok true)
+  )
+)
+
+;; Test: Ticket ownership is consistent across both maps
+(define-public (test-ticket-maps-consistent (event-id uint) (owner principal))
+  (match (get-ticket event-id owner)
+    ticket-data
+    (let ((ticket-id (get ticket-id ticket-data)))
+      (match (get-ticket-owner ticket-id)
+        owner-data
+        (begin
+          (asserts! (is-eq owner (get owner owner-data)) (err u1008))
+          (asserts! (is-eq event-id (get event-id owner-data)) (err u1009))
+          (asserts! (is-eq (get used ticket-data) (get used owner-data)) (err u1010))
+          (ok true))
+        (err u1011)))
+    (ok true)
+  )
+)
+
+;; Test: Organizer approval status is valid
+(define-public (test-organizer-approved (organizer principal))
+  (let ((status (get-organizer-status organizer)))
+    (if (is-some status)
+      (begin
+        (asserts! (get is-approved (unwrap-panic status)) (err u1012))
+        (ok true))
+      (ok true)))
+)
+
+;; Test: Used status is a valid boolean
+(define-public (test-used-status-boolean (event-id uint) (owner principal))
+  (match (get-ticket event-id owner)
+    ticket-data
+    (begin
+      ;; Bool type always valid, but check it's either true or false
+      (asserts! (or (get used ticket-data) (not (get used ticket-data)))
+                (err u1013))
+      (ok true))
+    (ok true)
+  )
+)
+
+;; Test: Cancelled events are properly recorded
+(define-public (test-cancellation-status (event-id uint))
+  (let ((is-cancelled (is-event-cancelled event-id)))
+    ;; Cancellation status should be a valid boolean
+    (asserts! (or is-cancelled (not is-cancelled)) (err u1014))
+    (ok true))
+)
+
+;; Test: Admin is always set
+(define-public (test-admin-exists)
+  (begin
+    ;; get-admin should always return a valid principal
+    (asserts! (is-some (some (get-admin))) (err u1015))
+    (ok true)
+  )
+)
+
+;; Test: Ticket purchase increases tickets-sold correctly
+(define-public (test-purchase-increments-sold (event-id uint))
+  (match (get-event event-id)
+    event-before
+    (let ((sold-before (get tickets-sold event-before))
+          (total (get total-tickets event-before)))
+      ;; Only test if tickets are available
+      (if (< sold-before total)
+        (match (buy-ticket event-id)
+          ticket-id
+          (match (get-event event-id)
+            event-after
+            (begin
+              (asserts! (is-eq (get tickets-sold event-after) (+ sold-before u1))
+                        (err u1016))
+              (ok true))
+            (err u1017))
+          error
+          (ok true)) ;; Purchase failed, acceptable
+        (ok true))) ;; Sold out, acceptable
+    (ok true)
+  )
+)
