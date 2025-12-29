@@ -39,3 +39,47 @@
     (ok true)
   )
 )
+
+;; Test: Event names are never empty
+(define-public (test-event-name-not-empty (event-id uint))
+  (match (get-event event-id)
+    event-data
+    (begin
+      (asserts! (> (len (get name event-data)) u0) (err u1003))
+      (ok true))
+    (ok true)
+  )
+)
+
+;; Test: Event locations are never empty
+(define-public (test-event-location-not-empty (event-id uint))
+  (match (get-event event-id)
+    event-data
+    (begin
+      (asserts! (> (len (get location event-data)) u0) (err u1004))
+      (ok true))
+    (ok true)
+  )
+)
+
+;; Test: Total tickets must be at least 1
+(define-public (test-total-tickets-positive (event-id uint))
+  (match (get-event event-id)
+    event-data
+    (begin
+      (asserts! (> (get total-tickets event-data) u0) (err u1005))
+      (ok true))
+    (ok true)
+  )
+)
+
+;; Test: Event price is non-negative (always true for uint, but verify)
+(define-public (test-price-non-negative (event-id uint))
+  (match (get-event event-id)
+    event-data
+    (begin
+      (asserts! (>= (get price event-data) u0) (err u1006))
+      (ok true))
+    (ok true)
+  )
+)
