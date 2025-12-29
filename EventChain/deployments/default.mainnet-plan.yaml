@@ -1,0 +1,18 @@
+---
+id: 0
+name: Mainnet deployment
+network: mainnet
+stacks-node: "https://api.hiro.so"
+bitcoin-node: "http://blockstack:blockstacksystem@bitcoin.blockstack.com:8332"
+plan:
+  batches:
+    - id: 0
+      transactions:
+        - contract-publish:
+            contract-name: eventchain
+            expected-sender: SP262DFWDS07XGFC8HYE4H7MAESRD6M6G1AS6K16Y
+            cost: 212500
+            path: contracts/Eventchain.clar
+            anchor-block-only: true
+            clarity-version: 3
+      epoch: "3.1"
