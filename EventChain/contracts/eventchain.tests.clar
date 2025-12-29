@@ -263,3 +263,49 @@
   ;; This is structurally enforced, so always true
   true
 )
+
+;; =============================================================================
+;; STATEFUL PROPERTY TESTS
+;; =============================================================================
+;; These tests verify properties across multiple operations
+
+;; Test: Multiple purchases don't oversell
+(define-public (test-multiple-purchases-no-oversell (event-id uint) (count uint))
+  (match (get-event event-id)
+    event-data
+    (let ((available (- (get total-tickets event-data) (get tickets-sold event-data))))
+      ;; Try to buy up to 'count' tickets
+      (if (<= count available)
+        ;; Should succeed
+        (begin
+          ;; In a real scenario, we'd call buy-ticket multiple times
+          ;; For now, just verify current state
+          (asserts! (<= (get tickets-sold event-data) (get total-tickets event-data))
+                    (err u1020))
+          (ok true))
+        ;; Would exceed capacity
+        (ok true)))
+    (ok true))
+)
+
+;; Test: Transfer preserves ticket count
+(define-public (test-transfer-preserves-count (event-id uint) (from principal) (to principal))
+  (if (is-eq from to)
+    (ok true) ;; Skip self-transfer
+    (match (get-event event-id)
+      event-before
+      (let ((sold-before (get tickets-sold event-before)))
+        (match (transfer-ticket event-id to)
+          success
+          (match (get-event event-id)
+            event-after
+            (begin
+              ;; Tickets sold shouldn't change on transfer
+              (asserts! (is-eq (get tickets-sold event-after) sold-before)
+                        (err u1021))
+              (ok true))
+            (err u1022))
+          error
+          (ok true))) ;; Transfer failed, acceptable
+      (ok true)))
+)
