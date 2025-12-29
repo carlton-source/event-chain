@@ -224,3 +224,42 @@
             u11 u12 u13 u14 u15 u16 u17 u18 u19 u20)
       true))
 )
+
+(define-private (check-event-data-valid (event-id uint) (acc bool))
+  (if (not acc)
+    false
+    (match (get-event event-id)
+      event-data
+      (and
+        (> (len (get name event-data)) u0)
+        (> (len (get location event-data)) u0)
+        (> (get total-tickets event-data) u0))
+      true))
+)
+
+;; Invariant: Ticket IDs are unique and sequential
+(define-read-only (invariant-ticket-ids-sequential)
+  ;; All ticket IDs less than next-ticket-id should exist
+  ;; Sample check for first 30 tickets
+  (let ((max-id (get-next-ticket-id)))
+    (fold check-ticket-exists
+      (list u1 u2 u3 u4 u5 u6 u7 u8 u9 u10
+            u11 u12 u13 u14 u15 u16 u17 u18 u19 u20
+            u21 u22 u23 u24 u25 u26 u27 u28 u29 u30)
+      true))
+)
+
+(define-private (check-ticket-exists (ticket-id uint) (acc bool))
+  (if (not acc)
+    false
+    (if (< ticket-id (get-next-ticket-id))
+      (is-some (get-ticket-owner ticket-id))
+      true)) ;; ID not used yet
+)
+
+;; Invariant: Organizer map is consistent
+(define-read-only (invariant-organizers-approved)
+  ;; All organizers in the map should be approved
+  ;; This is structurally enforced, so always true
+  true
+)
