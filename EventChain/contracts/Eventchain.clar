@@ -230,3 +230,94 @@
     )
   )
 )
+
+;; ----  Check-In by Ticket ID ----
+;; =============================================================================
+;; CHECK-IN BY TICKET ID - Check in a ticket using its unique ID
+;; =============================================================================
+;; @desc: Check in a ticket using its unique ticket ID (only event creator can do this)
+;; @param: ticket-id - The unique ID of the ticket to check in
+;; @returns: (ok ticket-info) with attendee details on success, (err error-code) on failure
+
+(define-public (check-in-by-ticket-id (ticket-id uint))
+  ;; Get ticket info and validate ticket exists
+  (let ((ticket-info (unwrap! (map-get? ticket-owners (tuple (ticket-id ticket-id)))
+                               (err ERR-TICKET-ID-NOT-FOUND))))
+    
+    ;; Extract ticket details
+    (let (
+      (ticket-owner (get owner ticket-info))
+      (event-id (get event-id ticket-info))
+      (is-already-used (get used ticket-info))
+    )
+      ;; Get event data and validate event exists
+      (let ((event-data (unwrap! (map-get? events (tuple (event-id event-id)))
+                                 (err ERR-EVENT-NOT-FOUND-CHECKIN))))
+        
+        ;; Validate authorization - only event creator can check-in tickets
+        (asserts! (is-eq tx-sender (get creator event-data)) (err ERR-NOT-EVENT-CREATOR))
+        
+        ;; Validate ticket hasn't been used
+        (asserts! (not is-already-used) (err ERR-TICKET-ALREADY-USED))
+        
+        ;; Update both ticket mappings - mark as used
+        (map-set tickets (tuple (event-id event-id) (owner ticket-owner))
+          (tuple (used true) (ticket-id ticket-id)))
+        
+        (map-set ticket-owners (tuple (ticket-id ticket-id))
+          (merge ticket-info (tuple (used true))))
+        
+        ;; Return success with attendee information
+        (ok {
+          ticket-owner: ticket-owner,
+          event-id: event-id,
+          ticket-id: ticket-id
+        })
+      )
+    )
+  )
+)
+
+;; =============================================================================
+;; CHECK-IN BY USER ADDRESS - Check in a ticket using attendee address
+;; =============================================================================
+;; @desc: Check in a ticket using the attendee's address (only event creator can do this)
+;; @param: event-id - The ID of the event
+;; @param: user - The principal address of the ticket holder
+;; @returns: (ok true) on success, (err error-code) on failure
+
+(define-public (check-in-ticket (event-id uint) (user principal))
+  ;; Get event data and validate event exists
+  (let ((event-data (unwrap! (map-get? events (tuple (event-id event-id))) 
+                              (err ERR-EVENT-NOT-FOUND-CHECKIN))))
+    
+    ;; Validate authorization - only event creator can check-in attendees
+    (asserts! (is-eq tx-sender (get creator event-data)) (err ERR-NOT-EVENT-CREATOR))
+    
+    ;; Get ticket data and validate user has a ticket
+    (let ((ticket-data (unwrap! (map-get? tickets (tuple (event-id event-id) (owner user)))
+                                (err ERR-USER-NO-TICKET))))
+      
+      ;; Validate ticket hasn't been used
+      (asserts! (not (get used ticket-data)) (err ERR-TICKET-ALREADY-USED))
+      
+      ;; Extract ticket ID for reverse mapping update
+      (let ((ticket-id (get ticket-id ticket-data)))
+        
+        ;; Update primary ticket mapping - mark as used
+        (map-set tickets (tuple (event-id event-id) (owner user))
+          (tuple (used true) (ticket-id ticket-id)))
+        
+        ;; Update reverse ticket mapping - mark as used
+        (let ((ticket-owner-data (unwrap! (map-get? ticket-owners {ticket-id: ticket-id})
+                                          (err ERR-TICKET-OWNER-UPDATE-FAILED))))
+          (map-set ticket-owners (tuple (ticket-id ticket-id))
+            (merge ticket-owner-data (tuple (used true))))
+          
+          ;; Return success
+          (ok true)
+        )
+      )
+    )
+  )
+)
