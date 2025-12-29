@@ -321,3 +321,67 @@
     )
   )
 )
+
+;; =============================================================================
+;; EVENT CANCELLATION - Cancel an event (only by creator)
+;; =============================================================================
+;; @desc: Cancel an event, allowing ticket holders to request refunds
+;; @param: event-id - The ID of the event to cancel
+;; @returns: (ok true) on success, (err error-code) on failure
+
+(define-public (cancel-event (event-id uint))
+  ;; Get event data and validate event exists
+  (let ((event-data (unwrap! (map-get? events (tuple (event-id event-id))) 
+                              (err ERR-EVENT-NOT-FOUND-CANCEL))))
+    
+    ;; Validate authorization - only event creator can cancel
+    (asserts! (is-eq tx-sender (get creator event-data)) (err ERR-NOT-EVENT-OWNER))
+    
+    ;; Mark event as cancelled
+    (map-set event-cancelled (tuple (event-id event-id)) true)
+    
+    ;; Return success
+    (ok true)
+  )
+)
+
+;; =============================================================================
+;; TICKET REFUND - Request refund for cancelled event
+;; =============================================================================
+;; @desc: Request refund for a ticket when event is cancelled
+;; @param: event-id - The ID of the cancelled event
+;; @returns: (ok true) on successful refund, (err error-code) on failure
+
+(define-public (refund-ticket (event-id uint))
+  ;; Check if event is cancelled
+  (let ((cancelled-status (default-to false (map-get? event-cancelled (tuple (event-id event-id))))))
+    (asserts! cancelled-status (err ERR-EVENT-NOT-CANCELLED))
+    
+    ;; Get event data and validate event exists
+    (let ((event-data (unwrap! (map-get? events (tuple (event-id event-id)))
+                               (err ERR-EVENT-NOT-FOUND-REFUND))))
+      
+      ;; Get ticket data and validate user has a ticket
+      (let ((ticket-data (unwrap! (map-get? tickets (tuple (event-id event-id) (owner tx-sender)))
+                                  (err ERR-NO-REFUND-TICKET))))
+        
+        ;; Extract refund details
+        (let (
+          (ticket-id (get ticket-id ticket-data))
+          (refund-amount (get price event-data))
+          (event-creator (get creator event-data))
+        )
+          ;; Process refund transfer from creator back to ticket holder
+          (try! (stx-transfer? refund-amount event-creator tx-sender))
+          
+          ;; Clean up ticket records - remove from both mappings
+          (map-delete tickets (tuple (event-id event-id) (owner tx-sender)))
+          (map-delete ticket-owners (tuple (ticket-id ticket-id)))
+          
+          ;; Return success
+          (ok true)
+        )
+      )
+    )
+  )
+)
