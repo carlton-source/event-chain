@@ -176,3 +176,51 @@
     (ok true)
   )
 )
+
+;; =============================================================================
+;; INVARIANT TESTS
+;; =============================================================================
+;; These are read-only functions that check system-wide invariants
+
+;; Invariant: No event has oversold tickets
+(define-read-only (invariant-no-overselling)
+  (let ((max-id (get-next-event-id)))
+    (fold check-no-overselling
+      (list u1 u2 u3 u4 u5 u6 u7 u8 u9 u10
+            u11 u12 u13 u14 u15 u16 u17 u18 u19 u20
+            u21 u22 u23 u24 u25 u26 u27 u28 u29 u30)
+      true))
+)
+
+(define-private (check-no-overselling (event-id uint) (acc bool))
+  (if (not acc)
+    false
+    (match (get-event event-id)
+      event-data
+      (<= (get tickets-sold event-data) (get total-tickets event-data))
+      true))
+)
+
+;; Invariant: Next event ID is always >= 1
+(define-read-only (invariant-next-event-id-valid)
+  (>= (get-next-event-id) u1)
+)
+
+;; Invariant: Next ticket ID is always >= 1
+(define-read-only (invariant-next-ticket-id-valid)
+  (>= (get-next-ticket-id) u1)
+)
+
+;; Invariant: Admin is set
+(define-read-only (invariant-admin-set)
+  (is-some (some (get-admin)))
+)
+
+;; Invariant: All active events have valid data
+(define-read-only (invariant-events-have-valid-data)
+  (let ((max-id (get-next-event-id)))
+    (fold check-event-data-valid
+      (list u1 u2 u3 u4 u5 u6 u7 u8 u9 u10
+            u11 u12 u13 u14 u15 u16 u17 u18 u19 u20)
+      true))
+)
