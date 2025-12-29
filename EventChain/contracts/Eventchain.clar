@@ -46,3 +46,98 @@
 (define-data-var next-event-id uint u1)
 (define-data-var next-ticket-id uint u1)
 (define-data-var admin principal tx-sender)
+
+;; ---- Maps ----
+;; Maps to store events and tickets
+(define-map events {event-id: uint} {
+    creator: principal,
+    name: (string-utf8 100),
+    location: (string-utf8 100),
+    timestamp: uint,
+    price: uint,
+    total-tickets: uint,
+    tickets-sold: uint,
+    created-timestamp: uint,
+    image: (string-utf8 100)
+})
+
+;; ticket mapping (by event-id and owner)
+(define-map tickets {event-id: uint, owner: principal} {used: bool, ticket-id: uint})
+
+;;  Reverse mapping from ticket-id to owner address for easy lookup
+(define-map ticket-owners {ticket-id: uint} {
+    owner: principal,
+    event-id: uint,
+    used: bool,
+    purchase-timestamp: uint
+})
+
+(define-map organizers {organizer: principal} {is-approved: bool})
+(define-map event-cancelled {event-id: uint} bool)
+
+
+
+
+;; ---- Admin Function ----
+(define-public (add-organizer (who principal))
+  (begin
+    (asserts! (is-eq tx-sender (var-get admin)) (err ERR-NOT-ADMIN))
+    (map-set organizers {organizer: who} {is-approved: true})
+    (ok true))
+)
+
+
+;; =============================================================================
+;; EVENT CREATION - Create a new event
+;; =============================================================================
+;; @desc: Create a new event with specified details (only approved organizers can create events)
+;; @param: name - Event name (cannot be empty)
+;; @param: location - Event location (cannot be empty) 
+;; @param: timestamp - When the event occurs (must be in the future)
+;; @param: price - Price per ticket (can be 0 for free events)
+;; @param: total-tickets - Total number of tickets available (must be > 0)
+;; @param: image - URL/path to event image (optional, can be empty)
+;; @returns: (ok event-id) on success, (err error-code) on failure
+
+(define-public (create-event
+    (name (string-utf8 100))
+    (location (string-utf8 100))
+    (timestamp uint)
+    (price uint)
+    (total-tickets uint)
+    (image (string-utf8 100))
+  )
+  (begin
+    ;; Validate organizer authorization first
+    (asserts! (is-some (map-get? organizers {organizer: tx-sender})) (err ERR-NOT-ORGANIZER))
+    
+    ;; Validate all input parameters to prevent untrusted input
+    (asserts! (> (len name) u0) (err ERR-INVALID-INPUT))
+    (asserts! (> (len location) u0) (err ERR-INVALID-INPUT))
+    (asserts! (> timestamp stacks-block-height) (err ERR-INVALID-TIMESTAMP))
+    (asserts! (> total-tickets u0) (err ERR-INVALID-TICKET-COUNT))
+    ;; NB: price can be 0 for free events, so no validation needed
+    
+    ;; Create the event record
+    (let ((event-id (var-get next-event-id)))
+      (map-set events
+        (tuple (event-id event-id))
+        (tuple
+          (creator tx-sender)
+          (name name)
+          (location location)
+          (timestamp timestamp)
+          (price price)
+          (total-tickets total-tickets)
+          (tickets-sold u0)
+          (created-timestamp stacks-block-height)
+          (image image)))
+      
+      ;; Increment event counter
+      (var-set next-event-id (+ event-id u1))
+      
+      ;; Return the new event ID
+      (ok event-id)
+    )
+  )
+)
