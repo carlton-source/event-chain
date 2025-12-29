@@ -141,3 +141,92 @@
     )
   )
 )
+
+;; =============================================================================
+;; TICKET PURCHASE - Purchase a ticket for an event
+;; =============================================================================
+;; @desc: Purchase a ticket for an event, returns unique ticket ID on success
+;; @param: event-id - The ID of the event to purchase a ticket for
+;; @returns: (ok ticket-id) on success, (err error-code) on failure
+
+(define-public (buy-ticket (event-id uint))
+  (match (map-get? events (tuple (event-id event-id)))
+    event-data
+    (let (
+      (ticket-price (get price event-data))
+      (tickets-sold (get tickets-sold event-data))
+      (total-tickets (get total-tickets event-data))
+      (new-ticket-id (var-get next-ticket-id))
+      (event-creator (get creator event-data))
+    )
+      ;; Input validation and business logic checks
+      (asserts! (< tickets-sold total-tickets) (err ERR-SOLD-OUT))
+      (asserts! (is-none (map-get? tickets (tuple (event-id event-id) (owner tx-sender)))) 
+                (err ERR-ALREADY-OWNS-TICKET))
+      
+      ;; Process payment 
+      (try! (stx-transfer? ticket-price tx-sender event-creator))
+      
+      ;; Create ticket records atomically
+      (map-set tickets (tuple (event-id event-id) (owner tx-sender))
+        (tuple (used false) (ticket-id new-ticket-id)))
+      
+      (map-set ticket-owners (tuple (ticket-id new-ticket-id))
+        (tuple 
+          (owner tx-sender)
+          (event-id event-id)
+          (used false)
+          (purchase-timestamp stacks-block-height)))
+      
+      ;; Update counters
+      (var-set next-ticket-id (+ new-ticket-id u1))
+      (map-set events (tuple (event-id event-id))
+        (merge event-data (tuple (tickets-sold (+ tickets-sold u1)))))
+      
+      ;; Return the new ticket ID
+      (ok new-ticket-id)
+    )
+    (err ERR-EVENT-NOT-FOUND)
+  )
+)
+
+
+;; =============================================================================
+;; TICKET TRANSFER - Transfer a ticket to another user
+;; =============================================================================
+;; @desc: Transfer ownership of a ticket to another user (ticket must be unused)
+;; @param: event-id - The ID of the event 
+;; @param: to - The principal address to transfer the ticket to
+;; @returns: (ok true) on successful transfer, (err error-code) on failure
+
+(define-public (transfer-ticket (event-id uint) (recipient principal))
+  ;; Get ticket data and validate user owns the ticket
+  (let ((ticket-data (unwrap! (map-get? tickets (tuple (event-id event-id) (owner tx-sender)))
+                               (err ERR-NO-TICKET))))
+    
+    ;; Extract ticket details
+    (let ((ticket-id (get ticket-id ticket-data)))
+      
+      ;; Validate transfer conditions
+      (asserts! (not (get used ticket-data)) (err ERR-TICKET-USED))
+      (asserts! (not (is-eq tx-sender recipient)) (err ERR-INVALID-RECIPIENT))
+      
+      ;; Get ticket owner data for reverse mapping update
+      (let ((ticket-owner-data (unwrap! (map-get? ticket-owners {ticket-id: ticket-id})
+                                        (err ERR-TRANSFER-FAILED))))
+        
+        ;; Update primary ticket mapping - transfer ownership
+        (map-delete tickets (tuple (event-id event-id) (owner tx-sender)))
+        (map-set tickets (tuple (event-id event-id) (owner recipient))
+          (tuple (used false) (ticket-id ticket-id)))
+        
+        ;; Update reverse ticket mapping - change owner
+        (map-set ticket-owners (tuple (ticket-id ticket-id))
+          (merge ticket-owner-data (tuple (owner recipient))))
+        
+        ;; Return success
+        (ok true)
+      )
+    )
+  )
+)
